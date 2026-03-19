@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User account information for customers, delivery staff, and admins.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Full name" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "phone": { "type": "string", "description": "Mobile number" },
+        "role": { "type": "string", "enum": ["customer", "delivery", "admin"], "description": "User role" },
+        "address": { "type": "string", "description": "Physical delivery address" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          },
+          "description": "GPS coordinates for delivery"
+        },
+        "walletBalance": { "type": "number", "description": "Current prepaid balance" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "role"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "Milk delivery subscription details.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string", "description": "UID of the customer" },
+        "planType": { "type": "string", "enum": ["daily", "alternate", "custom"], "description": "Frequency of delivery" },
+        "quantity": { "type": "number", "description": "Liters per delivery" },
+        "status": { "type": "string", "enum": ["active", "paused", "cancelled"], "description": "Current status" },
+        "customDays": { "type": "array", "items": { "type": "string" }, "description": "Specific days for custom plans" },
+        "startDate": { "type": "string", "format": "date" },
+        "nextDeliveryDate": { "type": "string", "format": "date" }
+      },
+      "required": ["customerId", "planType", "quantity", "status"]
+    },
+    "DeliveryOrder": {
+      "title": "Delivery Order",
+      "description": "Daily generated delivery task.",
+      "type": "object",
+      "properties": {
+        "subscriptionId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "deliveryStaffId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "quantity": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "delivered", "missed", "cancelled"] },
+        "deliveredAt": { "type": "string", "format": "date-time" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        }
+      },
+      "required": ["customerId", "date", "quantity", "status"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Wallet ledger entries.",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["recharge", "deduction"] },
+        "description": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "orderId": { "type": "string", "description": "Optional link to a delivery order" }
+      },
+      "required": ["customerId", "amount", "type", "timestamp"]
+    },
+    "Inventory": {
+      "title": "Inventory",
+      "description": "Daily milk production and stock tracking.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "productionLiters": { "type": "number" },
+        "deliveredLiters": { "type": "number" },
+        "wastageLiters": { "type": "number" },
+        "outletStock": { "type": "number" }
+      },
+      "required": ["date", "productionLiters"]
+    }
+  },
+  "firestore": {
+    "users": { "schema": "UserProfile", "description": "User profiles" },
+    "subscriptions": { "schema": "Subscription", "description": "Active subscriptions" },
+    "orders": { "schema": "DeliveryOrder", "description": "Daily delivery orders" },
+    "transactions": { "schema": "Transaction", "description": "Wallet transactions" },
+    "inventory": { "schema": "Inventory", "description": "Inventory tracking" }
+  }
+}

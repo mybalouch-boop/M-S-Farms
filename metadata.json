@@ -1,0 +1,5 @@
+{
+  "name": "M&S Farms ERP",
+  "description": "A high-conversion ERP system for premium milk delivery, featuring automated subscriptions, prepaid wallet, and real-time delivery tracking.",
+  "requestFramePermissions": ["geolocation"]
+}

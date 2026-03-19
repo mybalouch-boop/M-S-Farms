@@ -1,0 +1,176 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (UID)
+    // Fields:
+    //   - uid: string (required)
+    //   - name: string (required)
+    //   - email: string (optional)
+    //   - phone: string (optional)
+    //   - role: string (required, enum: ['customer', 'delivery', 'admin', 'inventory_manager', 'delivery_manager'])
+    //   - address: string (optional)
+    //   - location: map (optional)
+    //   - walletBalance: number (optional)
+    //   - createdAt: timestamp (optional)
+    //
+    // Collection: subscriptions
+    // Document ID: subscriptionId
+    // Fields:
+    //   - customerId: string (required)
+    //   - planType: string (required, enum: ['daily', 'alternate', 'custom'])
+    //   - quantity: number (required)
+    //   - status: string (required, enum: ['active', 'paused', 'cancelled'])
+    //   - customDays: list (optional)
+    //   - startDate: timestamp (optional)
+    //   - nextDeliveryDate: timestamp (optional)
+    //
+    // Collection: orders
+    // Document ID: orderId
+    // Fields:
+    //   - subscriptionId: string (optional)
+    //   - customerId: string (required)
+    //   - deliveryStaffId: string (optional)
+    //   - date: timestamp (required)
+    //   - quantity: number (required)
+    //   - status: string (required, enum: ['pending', 'delivered', 'missed', 'cancelled'])
+    //   - deliveredAt: timestamp (optional)
+    //   - location: map (optional)
+    //
+    // Collection: transactions
+    // Document ID: transactionId
+    // Fields:
+    //   - customerId: string (required)
+    //   - amount: number (required)
+    //   - type: string (required, enum: ['recharge', 'deduction'])
+    //   - description: string (optional)
+    //   - timestamp: timestamp (required)
+    //   - orderId: string (optional)
+    //
+    // Collection: inventory
+    // Document ID: inventoryId
+    // Fields:
+    //   - date: timestamp (required)
+    //   - productionLiters: number (required)
+    //   - deliveredLiters: number (optional)
+    //   - wastageLiters: number (optional)
+    //   - outletStock: number (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "my.balouch@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isDeliveryStaff() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'delivery';
+    }
+
+    function isInventoryManager() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'inventory_manager';
+    }
+
+    function isDeliveryManager() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'delivery_manager';
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'role']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.role in ['customer', 'delivery', 'admin', 'inventory_manager', 'delivery_manager'] &&
+             (!('walletBalance' in data) || data.walletBalance is number) &&
+             (!('email' in data) || (data.email is string && data.email.size() < 100)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() < 20));
+    }
+
+    function isValidSubscription(data) {
+      return data.keys().hasAll(['customerId', 'planType', 'quantity', 'status']) &&
+             data.customerId is string &&
+             data.planType in ['daily', 'alternate', 'custom'] &&
+             data.quantity is number && data.quantity > 0 &&
+             data.status in ['active', 'paused', 'cancelled'];
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['customerId', 'date', 'quantity', 'status']) &&
+             data.customerId is string &&
+             data.quantity is number && data.quantity > 0 &&
+             data.status in ['pending', 'delivered', 'missed', 'cancelled'];
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['customerId', 'amount', 'type', 'timestamp']) &&
+             data.customerId is string && data.customerId.size() > 0 &&
+             data.amount is number && data.amount > 0 && data.amount < 1000000 &&
+             data.type in ['recharge', 'deduction'] &&
+             data.timestamp is timestamp &&
+             (!('description' in data) || (data.description is string && data.description.size() < 200));
+    }
+
+    function isValidInventory(data) {
+      return data.keys().hasAll(['date', 'productionLiters']) &&
+             data.date is timestamp &&
+             data.productionLiters is number && data.productionLiters >= 0;
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin() || isDeliveryStaff() || isDeliveryManager();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (isAdmin() || isDeliveryManager() || 
+                     (isOwner(userId) && request.resource.data.role == resource.data.role));
+      allow delete: if isAdmin();
+    }
+
+    match /subscriptions/{subId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.customerId) || isAdmin() || isDeliveryManager());
+      allow create: if isAuthenticated() && isValidSubscription(request.resource.data) && (isOwner(request.resource.data.customerId) || isAdmin() || isDeliveryManager());
+      allow update: if isAuthenticated() && isValidSubscription(request.resource.data) && (isOwner(resource.data.customerId) || isAdmin() || isDeliveryManager());
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.customerId) || isAdmin() || isDeliveryStaff() || isDeliveryManager());
+      allow create: if isAdmin() || isDeliveryManager();
+      allow update: if isAuthenticated() && (isAdmin() || isDeliveryManager() || isDeliveryStaff() || (isOwner(resource.data.customerId) && request.resource.data.status == 'cancelled'));
+      allow delete: if isAdmin();
+    }
+
+    match /transactions/{txId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.customerId) || isAdmin() || isDeliveryManager());
+      allow create: if isAuthenticated() && isValidTransaction(request.resource.data) && 
+                    (isAdmin() || isDeliveryManager() || isOwner(request.resource.data.customerId)); 
+      allow update: if false; 
+      allow delete: if false;
+    }
+
+    match /inventory/{invId} {
+      allow read: if isAdmin() || isInventoryManager();
+      allow create: if isAdmin() || isInventoryManager();
+      allow update: if isAdmin() || isInventoryManager();
+      allow delete: if isAdmin();
+    }
+  }
+}
